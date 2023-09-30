@@ -1,0 +1,139 @@
+name: Release
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  compile:
+    name: Build release binaries
+    strategy:
+      matrix:
+        include:
+          # - target: x86_64-apple-darwin
+          #   os: macos-latest
+          #   features: ""
+          # - target: aarch64-apple-darwin
+          #   os: macos-latest
+          #   features: ""
+          # - target: x86_64-pc-windows-msvc
+          #   os: windows-latest
+          #   features: ""
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            features: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: nightly
+          target: ${{ matrix.target }}
+
+      - name: Install linux dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get install -y libwayland-client0 libwayland-dev libxkbcommon-dev pkg-config libx11-dev libasound2-dev libudev-dev
+
+      - name: Run sccache-cache
+        uses: mozilla-actions/sccache-action@v0.0.3
+
+      - run: cargo build --release --locked --target ${{ matrix.target }} --no-default-features --features=${{ matrix.features }}
+        env:
+          SCCACHE_GHA_ENABLED: "true"
+          RUSTC_WRAPPER: "sccache"
+
+      - name: Post-Build | Compress [Features; -nix]
+        if: matrix.features != '' && !contains(matrix.os, 'windows')
+        uses: a7ul/tar-action@v1.1.2
+        with:
+          command: c
+          cwd: ./target/${{ matrix.target }}/release/
+          files: worlds-history-sim-rs
+          outPath: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features }}.tar.gz
+      - name: Post-Build | Compress [Minimal; -nix]
+        if: matrix.features == '' && !contains(matrix.os, 'windows')
+        uses: a7ul/tar-action@v1.1.2
+        with:
+          command: c
+          cwd: ./target/${{ matrix.target }}/release/
+          files: worlds-history-sim-rs
+          outPath: worlds-history-sim-rs-${{ matrix.target }}-minimal.tar.gz
+
+      - name: Post-Build | Compress [Features; Windows]
+        if: matrix.features != '' && contains(matrix.os, 'windows')
+        uses: a7ul/tar-action@v1.1.2
+        with:
+          command: c
+          cwd: ./target/${{ matrix.target }}/release/
+          files: worlds-history-sim-rs.exe
+          outPath: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features }}.tar.gz
+      - name: Post-Build | Compress [Minimal; Windows]
+        if: matrix.features == '' && contains(matrix.os, 'windows')
+        uses: a7ul/tar-action@v1.1.2
+        with:
+          command: c
+          cwd: ./target/${{ matrix.target }}/release/
+          files: worlds-history-sim-rs.exe
+          outPath: worlds-history-sim-rs-${{ matrix.target }}-minimal.tar.gz
+
+      - name: Deploy | Upload Artifacts [Features]
+        if: matrix.features != ''
+        uses: actions/upload-artifact@v3
+        with:
+          if-no-files-found: error
+          name: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features }}
+          path: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features }}.tar.gz
+
+      - name: Deploy | Upload Artifacts [Minimal]
+        if: matrix.features == ''
+        uses: actions/upload-artifact@v3
+        with:
+          if-no-files-found: error
+          name: worlds-history-sim-rs-${{ matrix.target }}-minimal
+          path: worlds-history-sim-rs-${{ matrix.target }}-minimal.tar.gz
+
+  github-release:
+    name: GitHub release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    needs: [compile]
+    steps:
+      - name: Setup | Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup | Artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Setup | Checksums
+        run: for file in worlds-history-sim-rs-**/*; do openssl dgst -sha256 -r "$file" | awk '{print $1}' > "${file}.sha256"; done
+
+      - run: ls **/*
+      
+      - name: Update CHANGELOG
+        id: changelog
+        uses: requarks/changelog-action@v1
+        with:
+          token: ${{ github.token }}
+          tag: ${{ github.ref_name }}
+          useGitmojis: false
+
+      - name: Update Release
+        uses: ncipollo/release-action@v1.12.0
+        with:
+          allowUpdates: true
+          draft: false
+          makeLatest: true
+          prerelease: ${{ contains(github.ref_name, 'pre') }}
+          name: ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.changes }}
+          token: ${{ github.token }}
+          artifacts: |
+            **/*.sha256
+            **/*.tar.gz
+            CHANGELOG.md
+            LICENSE

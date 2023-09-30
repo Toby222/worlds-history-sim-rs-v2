@@ -1,6 +1,6 @@
 [package]
-name = "worlds-history-sim-rs-v2"
-version = "0.1.0"
+name = "worlds-history-sim-rs"
+version = "0.0.0"
 edition = "2021"
 
 [profile.release]
@@ -22,5 +22,5 @@ codegen-units = 1
 opt-level = 3
 codegen-units = 1
 
-[dependencies.bevy]
-version = "0.11"
+# [dependencies.bevy]
+# version = "0.11"
