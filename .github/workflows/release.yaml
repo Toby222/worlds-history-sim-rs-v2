@@ -42,55 +42,21 @@ jobs:
 
       - run: cargo build --release --locked --target ${{ matrix.target }} --no-default-features --features=${{ matrix.features }}
 
-      - name: Post-Build | Compress [Features; -nix]
-        if: matrix.features != '' && !contains(matrix.os, 'windows')
-        uses: a7ul/tar-action@v1.1.2
+      - name: Post-Build | Compress
+        uses: ksm2/archive-action@v1
         with:
-          command: c
-          cwd: ./target/${{ matrix.target }}/release/
-          files: worlds-history-sim-rs
-          outPath: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features }}.tar.gz
-      - name: Post-Build | Compress [Minimal; -nix]
-        if: matrix.features == '' && !contains(matrix.os, 'windows')
-        uses: a7ul/tar-action@v1.1.2
-        with:
-          command: c
-          cwd: ./target/${{ matrix.target }}/release/
-          files: worlds-history-sim-rs
-          outPath: worlds-history-sim-rs-${{ matrix.target }}-minimal.tar.gz
+          format: "tar.gz"
+          root-directory: ./target/${{ matrix.target }}/release/
+          include: ${{ contains(matrix.os, 'windows') && worlds-history-sim-rs.exe || worlds-history-sim-rs }}
+          name: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features == '' && "minimal" || matrix.features }}.tar.gz
 
-      - name: Post-Build | Compress [Features; Windows]
-        if: matrix.features != '' && contains(matrix.os, 'windows')
-        uses: a7ul/tar-action@v1.1.2
-        with:
-          command: c
-          cwd: ./target/${{ matrix.target }}/release/
-          files: worlds-history-sim-rs.exe
-          outPath: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features }}.tar.gz
-      - name: Post-Build | Compress [Minimal; Windows]
-        if: matrix.features == '' && contains(matrix.os, 'windows')
-        uses: a7ul/tar-action@v1.1.2
-        with:
-          command: c
-          cwd: ./target/${{ matrix.target }}/release/
-          files: worlds-history-sim-rs.exe
-          outPath: worlds-history-sim-rs-${{ matrix.target }}-minimal.tar.gz
-
-      - name: Deploy | Upload Artifacts [Features]
+      - name: Deploy | Upload Artifacts
         if: matrix.features != ''
         uses: actions/upload-artifact@v3
         with:
           if-no-files-found: error
-          name: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features }}
-          path: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features }}.tar.gz
-
-      - name: Deploy | Upload Artifacts [Minimal]
-        if: matrix.features == ''
-        uses: actions/upload-artifact@v3
-        with:
-          if-no-files-found: error
-          name: worlds-history-sim-rs-${{ matrix.target }}-minimal
-          path: worlds-history-sim-rs-${{ matrix.target }}-minimal.tar.gz
+          name: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features == '' && "minimal" || matrix.features }}
+          path: worlds-history-sim-rs-${{ matrix.target }}-${{ matrix.features == '' && "minimal" || matrix.features }}.tar.gz
 
   github-release:
     name: GitHub release
