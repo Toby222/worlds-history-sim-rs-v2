@@ -26,24 +26,21 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
-      - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: nightly
-          target: ${{ matrix.target }}
+      # cache uses the current rustc version as its cache key
+      - run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
 
       - name: Install linux dependencies
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get install -y libwayland-client0 libwayland-dev libxkbcommon-dev pkg-config libx11-dev libasound2-dev libudev-dev
-
-      - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.3
+      
+      - name: Set up cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ${{ matrix.target }} ${{ matrix.features }}
+          cache-directories: assets/
 
       - run: cargo build --release --locked --target ${{ matrix.target }} --no-default-features --features=${{ matrix.features }}
-        env:
-          SCCACHE_GHA_ENABLED: "true"
-          RUSTC_WRAPPER: "sccache"
 
       - name: Post-Build | Compress [Features; -nix]
         if: matrix.features != '' && !contains(matrix.os, 'windows')
