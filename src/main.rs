@@ -1,64 +1,20 @@
-mod pipeline;
-mod plugin;
-use bevy::{
-    prelude::*,
-    render::{extract_resource::ExtractResource, render_resource::*},
-};
-use plugin::ShaderTestComputePlugin;
+#![warn(clippy::all, rust_2018_idioms)]
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-const SIZE: (u32, u32) = (1920, 1080);
-const WORKGROUP_SIZE: u32 = 8;
+use worlds_history_sim_rs::SimulatorApp;
 
-fn main() {
-    App::new()
-        .insert_resource(ClearColor(Color::BLACK))
-        .add_plugins((DefaultPlugins, ShaderTestComputePlugin))
-        .add_systems(Startup, setup)
-        .run();
+fn main() -> eframe::Result<()> {
+    env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
+
+    let native_options = eframe::NativeOptions {
+        initial_window_size: Some([400.0, 300.0].into()),
+        min_window_size: Some([300.0, 220.0].into()),
+
+        ..Default::default()
+    };
+    eframe::run_native(
+        "eframe template",
+        native_options,
+        Box::new(|cc| Box::new(SimulatorApp::new(cc))),
+    )
 }
-
-fn setup(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
-    let mut image = Image::new_fill(
-        Extent3d {
-            width: SIZE.0,
-            height: SIZE.1,
-            depth_or_array_layers: 1,
-        },
-        TextureDimension::D2,
-        &[0, 0, 0, 255],
-        TextureFormat::Rgba8Unorm,
-    );
-    image.texture_descriptor.usage =
-        TextureUsages::COPY_DST | TextureUsages::STORAGE_BINDING | TextureUsages::TEXTURE_BINDING;
-    let image = images.add(image);
-
-    commands.spawn(SpriteBundle {
-        sprite: Sprite {
-            custom_size: Some(Vec2::new(SIZE.0 as f32, SIZE.1 as f32)),
-            ..default()
-        },
-        texture: image.clone(),
-        ..default()
-    });
-    commands.spawn(Camera2dBundle::default());
-
-    commands.insert_resource(ShaderTestImage(image));
-}
-
-#[derive(Resource, Clone, Deref, ExtractResource)]
-struct ShaderTestImage(Handle<Image>);
-
-#[derive(Resource, Clone, Deref, ExtractResource)]
-struct ShaderTestBuffer(Buffer);
-
-#[derive(Resource, Clone, Deref, ExtractResource)]
-struct ShaderTestCounter(u32);
-impl ShaderTestCounter {
-    fn inc(&mut self) -> u32 {
-        self.0 += 1;
-        self.0
-    }
-}
-
-#[derive(Resource)]
-struct ShaderTestImageBindGroup(BindGroup);
