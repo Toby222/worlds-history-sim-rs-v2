@@ -1,33 +1,28 @@
-use hecs::{Entity, World};
+use egui::mutex::Mutex;
+use hecs::World;
+use std::sync::Arc;
+
+use crate::Metadata;
 
 pub struct SimulatorApp {
-    world: World,
-    iterations_entity: Entity,
+    world: Arc<Mutex<World>>,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
-struct Iterations(usize);
-
 impl SimulatorApp {
-    pub fn new(_cc: &eframe::CreationContext<'_>) -> Self {
-        let mut world = World::new();
-        let iterations_entity = world.spawn((Iterations(0),));
-        Self {
-            world,
-            iterations_entity,
-        }
+    pub fn new(world: Arc<Mutex<World>>) -> Self {
+        Self { world }
     }
 }
 
 impl eframe::App for SimulatorApp {
     /// Called each time the UI needs repainting, which may be many times per second.
     fn update(&mut self, ctx: &egui::Context, frame: &mut eframe::Frame) {
-        let iterations = self
-            .world
-            .query_one_mut::<&mut Iterations>(self.iterations_entity)
+        let mut world = self.world.lock();
+        let (_, metadata) = world
+            .query_mut::<&mut Metadata>()
+            .into_iter()
+            .next()
             .expect("Iterations entity missing");
-
-        iterations.0 += 1;
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             // The top panel is often a good place for a menu bar:
 
@@ -45,10 +40,18 @@ impl eframe::App for SimulatorApp {
 
         egui::CentralPanel::default().show(ctx, |ui| {
             ui.heading("eframe template");
-            ui.label(iterations.0.to_string());
+            ui.label(format!("Total iterations: {}", metadata.total_iterations));
+            ui.label(format!(
+                "Previous execution time: {:?}",
+                metadata.previous_execution_time
+            ));
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 egui::warn_if_debug_build(ui);
             });
+        });
+
+        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
+            ui.label("Uwu");
         });
     }
 }

@@ -1,9 +1,30 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use worlds_history_sim_rs::SimulatorApp;
+use std::{error::Error, fmt::Display, sync::Arc, thread, time::Instant};
 
-fn main() -> eframe::Result<()> {
+use egui::mutex::Mutex;
+use hecs::World;
+use worlds_history_sim_rs::*;
+
+#[derive(Debug)]
+enum SimulationError {
+    ThreadSpawnError(std::io::Error),
+    EframeError(eframe::Error),
+}
+
+impl Display for SimulationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SimulationError::ThreadSpawnError(err) => write!(f, "Thread spawn error: {}", err),
+            SimulationError::EframeError(err) => write!(f, "Eframe error: {}", err),
+        }
+    }
+}
+
+impl Error for SimulationError {}
+
+fn main() -> Result<(), SimulationError> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions {
@@ -12,9 +33,39 @@ fn main() -> eframe::Result<()> {
 
         ..Default::default()
     };
+
+    let mut world = hecs::World::new();
+    world.spawn((worlds_history_sim_rs::Metadata::default(),));
+    let world = Arc::new(Mutex::new(world));
+    let app = SimulatorApp::new(world.clone());
+
+    thread::Builder::new()
+        .name("systems".into())
+        .spawn(move || run_systems(world))
+        .map_err(|err| SimulationError::ThreadSpawnError(err))?;
     eframe::run_native(
         "eframe template",
         native_options,
-        Box::new(|cc| Box::new(SimulatorApp::new(cc))),
+        Box::new(move |_cc| Box::new(app)),
     )
+    .map_err(|err| SimulationError::EframeError(err))?;
+    Ok(())
+}
+
+fn run_systems(world: Arc<Mutex<World>>) -> ! {
+    let mut prev_iteration = Instant::now();
+    loop {
+        let mut world = world.lock();
+
+        let metadata = world
+            .query_mut::<&mut Metadata>()
+            .into_iter()
+            .next()
+            .expect("Iterations entity is missing")
+            .1;
+        metadata.total_iterations = metadata.total_iterations.wrapping_add(1);
+
+        metadata.previous_execution_time = Instant::now().saturating_duration_since(prev_iteration);
+        prev_iteration = Instant::now();
+    }
 }
