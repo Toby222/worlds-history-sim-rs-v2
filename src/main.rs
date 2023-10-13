@@ -1,54 +1,33 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use eframe::egui;
+use egui::{mutex::RwLock, TextureHandle};
+use hecs::World;
 use std::{
-    error::Error,
-    fmt::Display,
     sync::Arc,
     thread,
     time::{Duration, Instant},
 };
-
-use egui::mutex::Mutex;
-use hecs::World;
 use worlds_history_sim_rs::*;
 
-#[derive(Debug)]
-enum SimulationError {
-    ThreadSpawnError(std::io::Error),
-    EframeError(eframe::Error),
-}
-
-impl Display for SimulationError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SimulationError::ThreadSpawnError(err) => write!(f, "Thread spawn error: {}", err),
-            SimulationError::EframeError(err) => write!(f, "Eframe error: {}", err),
-        }
-    }
-}
-
-impl Error for SimulationError {}
-
-fn main() -> Result<(), SimulationError> {
+fn main() -> color_eyre::Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions {
-        initial_window_size: Some([400.0, 300.0].into()),
-        min_window_size: Some([300.0, 220.0].into()),
+        initial_window_size: Some([800.0, 600.0].into()),
         ..Default::default()
     };
 
     let mut world = hecs::World::new();
     world.spawn((worlds_history_sim_rs::Metadata::default(),));
-    let world = Arc::new(Mutex::new(world));
+    let world = Arc::new(RwLock::new(world));
     let app = SimulatorApp::new(world.clone());
 
+    let world_clone = world.clone();
     thread::Builder::new()
         .name("systems".into())
-        .spawn(move || run_systems(world))
-        .map_err(SimulationError::ThreadSpawnError)?;
-
+        .spawn(move || run_systems(world_clone))?;
     eframe::run_native(
         "Systems test",
         native_options,
@@ -61,22 +40,33 @@ fn main() -> Result<(), SimulationError> {
                 });
             });
 
+            let world_texture_id = cc.egui_ctx.tex_manager().write().alloc(
+                "World".into(),
+                egui::ImageData::Color(Arc::new(egui::ColorImage::default())),
+                egui::TextureOptions::NEAREST,
+            );
+            world.write().spawn((WorldTextureHandle(TextureHandle::new(
+                cc.egui_ctx.tex_manager(),
+                world_texture_id,
+            )),));
+
             Box::new(app)
         }),
     )
-    .map_err(SimulationError::EframeError)?;
+    .expect("Failed to run eframe");
     Ok(())
 }
 
-fn run_systems(world: Arc<Mutex<World>>) -> ! {
+fn run_systems(world: Arc<RwLock<World>>) -> ! {
     let start_time = Instant::now();
     let mut one_second_timer = Instant::now();
-    let mut iterations_per_second = 0usize;
+    let mut quarter_second_timer = Instant::now();
+    let mut iterations_per_second = 0;
 
     loop {
-        let mut world = world.lock();
+        let mut world = world.write();
 
-        let (_entity, metadata) = world
+        let (_, metadata) = world
             .query_mut::<&mut Metadata>()
             .into_iter()
             .next()
@@ -86,15 +76,38 @@ fn run_systems(world: Arc<Mutex<World>>) -> ! {
         iterations_per_second += 1;
         if one_second_timer.elapsed() >= Duration::from_secs(1) {
             log::debug!(
-                "[{}] Total iterations: {}, actual time since start: {:?}, iterations last second: {}",
-                thread::current().name().unwrap_or("unnamed thread"),
-                metadata.total_iterations,
+                "Total iterations: {}, actual time since start: {:?}, iterations last second: {}",
+                metadata.total_iterations.separated::<3, '.'>(),
                 start_time.elapsed(),
-                iterations_per_second.separated::<3, ','>(),
+                iterations_per_second.separated::<3, '.'>(),
             );
             metadata.iterations_last_second = iterations_per_second;
             iterations_per_second = 0;
             one_second_timer = Instant::now();
+        }
+
+        if quarter_second_timer.elapsed() >= Duration::from_millis(250) {
+            let (_, world_texture_handle) = world
+                .query_mut::<&mut WorldTextureHandle>()
+                .into_iter()
+                .next()
+                .expect("WorldTextureHandle missing");
+
+            world_texture_handle.0.set(
+                egui::ImageData::Color(Arc::new(egui::ColorImage {
+                    size: [one_second_timer.elapsed().subsec_millis() as usize, 100],
+                    pixels: vec![
+                        egui::Rgba::BLUE.into();
+                        one_second_timer.elapsed().subsec_millis() as usize * 100
+                    ],
+                })),
+                egui::TextureOptions {
+                    magnification: egui::TextureFilter::Nearest,
+                    minification: egui::TextureFilter::Nearest,
+                },
+            );
+
+            quarter_second_timer = Instant::now();
         }
     }
 }
