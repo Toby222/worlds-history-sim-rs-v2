@@ -1,6 +1,6 @@
 use egui::mutex::Mutex;
 use hecs::World;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use crate::Metadata;
 
@@ -34,24 +34,22 @@ impl eframe::App for SimulatorApp {
                 });
                 ui.add_space(16.0);
 
-                egui::widgets::global_dark_light_mode_buttons(ui);
+                egui::widgets::global_dark_light_mode_switch(ui);
             });
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.heading("eframe template");
-            ui.label(format!("Total iterations: {}", metadata.total_iterations));
-            ui.label(format!(
-                "Previous execution time: {:?}",
-                metadata.previous_execution_time
-            ));
+            ui.label("Total iterations:");
+            ui.label(metadata.total_iterations.to_string());
+            ui.end_row();
+
+            ui.label("Previous execution time");
+            ui.label(format!("{:?}", metadata.previous_execution_time));
+
             ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
                 egui::warn_if_debug_build(ui);
             });
         });
-
-        egui::TopBottomPanel::bottom("bottom_panel").show(ctx, |ui| {
-            ui.label("Uwu");
-        });
+        ctx.request_repaint_after(Duration::from_secs_f64(1.0 / 144.0));
     }
 }

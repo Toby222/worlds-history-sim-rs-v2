@@ -1,7 +1,13 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
-use std::{error::Error, fmt::Display, sync::Arc, thread, time::Instant};
+use std::{
+    error::Error,
+    fmt::Display,
+    sync::Arc,
+    thread,
+    time::{Duration, Instant},
+};
 
 use egui::mutex::Mutex;
 use hecs::World;
@@ -30,7 +36,6 @@ fn main() -> Result<(), SimulationError> {
     let native_options = eframe::NativeOptions {
         initial_window_size: Some([400.0, 300.0].into()),
         min_window_size: Some([300.0, 220.0].into()),
-
         ..Default::default()
     };
 
@@ -44,7 +49,7 @@ fn main() -> Result<(), SimulationError> {
         .spawn(move || run_systems(world))
         .map_err(|err| SimulationError::ThreadSpawnError(err))?;
     eframe::run_native(
-        "eframe template",
+        "Systems test",
         native_options,
         Box::new(move |_cc| Box::new(app)),
     )
@@ -53,19 +58,31 @@ fn main() -> Result<(), SimulationError> {
 }
 
 fn run_systems(world: Arc<Mutex<World>>) -> ! {
+    let start_time = Instant::now();
     let mut prev_iteration = Instant::now();
+
+    let mut one_second_timer = Instant::now();
     loop {
         let mut world = world.lock();
 
-        let metadata = world
+        let (_entity, metadata) = world
             .query_mut::<&mut Metadata>()
             .into_iter()
             .next()
-            .expect("Iterations entity is missing")
-            .1;
+            .expect("Iterations entity is missing");
         metadata.total_iterations = metadata.total_iterations.wrapping_add(1);
+        metadata.previous_execution_time = prev_iteration.elapsed();
 
-        metadata.previous_execution_time = Instant::now().saturating_duration_since(prev_iteration);
+        if one_second_timer.elapsed() >= Duration::from_secs(1) {
+            log::debug!(
+                "Total iterations: {}, actual time since start: {:?}, iterations per second: {}",
+                metadata.total_iterations,
+                start_time.elapsed(),
+                metadata.total_iterations as f64 / start_time.elapsed().as_secs_f64()
+            );
+            one_second_timer = Instant::now();
+        }
+
         prev_iteration = Instant::now();
     }
 }
