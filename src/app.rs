@@ -2,7 +2,7 @@ use egui::mutex::Mutex;
 use hecs::World;
 use std::{sync::Arc, time::Duration};
 
-use crate::Metadata;
+use crate::{Metadata, Separator};
 
 pub struct SimulatorApp {
     world: Arc<Mutex<World>>,
@@ -39,17 +39,22 @@ impl eframe::App for SimulatorApp {
         });
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.label("Total iterations:");
-            ui.label(metadata.total_iterations.to_string());
-            ui.end_row();
+            egui::Grid::new("metadata").num_columns(2).show(ui, |ui| {
+                ui.label("Total iterations:");
+                ui.label(metadata.total_iterations.separated::<3, ','>());
+                ui.end_row();
 
-            ui.label("Previous execution time");
-            ui.label(format!("{:?}", metadata.previous_execution_time));
-
-            ui.with_layout(egui::Layout::bottom_up(egui::Align::LEFT), |ui| {
-                egui::warn_if_debug_build(ui);
+                ui.label("Iterations last lescond");
+                ui.label(metadata.iterations_last_second.separated::<3, ','>());
+                ui.end_row();
             });
+
+            ui.image(egui::include_image!("../assets/example.png"));
         });
+
+        if cfg!(debug_assertions) {
+            egui::TopBottomPanel::bottom("debug_warning").show(ctx, egui::warn_if_debug_build);
+        }
         ctx.request_repaint_after(Duration::from_secs_f64(1.0 / 144.0));
     }
 }

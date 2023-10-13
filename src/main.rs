@@ -47,21 +47,25 @@ fn main() -> Result<(), SimulationError> {
     thread::Builder::new()
         .name("systems".into())
         .spawn(move || run_systems(world))
-        .map_err(|err| SimulationError::ThreadSpawnError(err))?;
+        .map_err(SimulationError::ThreadSpawnError)?;
+
     eframe::run_native(
         "Systems test",
         native_options,
-        Box::new(move |_cc| Box::new(app)),
+        Box::new(move |cc| {
+            egui_extras::install_image_loaders(&cc.egui_ctx);
+            Box::new(app)
+        }),
     )
-    .map_err(|err| SimulationError::EframeError(err))?;
+    .map_err(SimulationError::EframeError)?;
     Ok(())
 }
 
 fn run_systems(world: Arc<Mutex<World>>) -> ! {
     let start_time = Instant::now();
-    let mut prev_iteration = Instant::now();
-
     let mut one_second_timer = Instant::now();
+    let mut iterations_per_second = 0usize;
+
     loop {
         let mut world = world.lock();
 
@@ -71,18 +75,19 @@ fn run_systems(world: Arc<Mutex<World>>) -> ! {
             .next()
             .expect("Iterations entity is missing");
         metadata.total_iterations = metadata.total_iterations.wrapping_add(1);
-        metadata.previous_execution_time = prev_iteration.elapsed();
 
+        iterations_per_second += 1;
         if one_second_timer.elapsed() >= Duration::from_secs(1) {
             log::debug!(
-                "Total iterations: {}, actual time since start: {:?}, iterations per second: {}",
+                "[{}] Total iterations: {}, actual time since start: {:?}, iterations last second: {}",
+                thread::current().name().unwrap_or("unnamed thread"),
                 metadata.total_iterations,
                 start_time.elapsed(),
-                metadata.total_iterations as f64 / start_time.elapsed().as_secs_f64()
+                iterations_per_second.separated::<3, ','>(),
             );
+            metadata.iterations_last_second = iterations_per_second;
+            iterations_per_second = 0;
             one_second_timer = Instant::now();
         }
-
-        prev_iteration = Instant::now();
     }
 }

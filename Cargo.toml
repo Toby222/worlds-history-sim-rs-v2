@@ -25,10 +25,11 @@ codegen-units = 1
 [dependencies]
 egui = "0.23.0"
 eframe = { version = "0.23.0", default-features = false, features = [
-  "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
-  "default_fonts", # Embed the default egui fonts.
-  "glow",          # Use the glow rendering backend. Alternative: "wgpu".
+  "glow",
+  "x11",
+  "wayland",
 ] }
 log = "0.4"
 env_logger = "0.10"
 hecs = "0.10.3"
+egui_extras = { version = "0.23.0", features = ["image"] }
