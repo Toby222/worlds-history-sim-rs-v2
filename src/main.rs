@@ -54,6 +54,13 @@ fn main() -> Result<(), SimulationError> {
         native_options,
         Box::new(move |cc| {
             egui_extras::install_image_loaders(&cc.egui_ctx);
+
+            cc.egui_ctx.style_mut(|style| {
+                style.text_styles.iter_mut().for_each(|text_style| {
+                    text_style.1.size *= 1.5;
+                });
+            });
+
             Box::new(app)
         }),
     )
