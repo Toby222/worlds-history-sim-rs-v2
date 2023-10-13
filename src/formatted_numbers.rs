@@ -1,4 +1,4 @@
-pub trait Separator {
+pub(crate) trait Separator {
     fn separated<const SPACING: usize, const SEPARATOR: char>(&self) -> String;
 }
 

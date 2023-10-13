@@ -1,6 +1,11 @@
 #![warn(clippy::all, rust_2018_idioms)]
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+mod app;
+mod components;
+mod formatted_numbers;
+mod planet;
+
 use eframe::egui;
 use egui::{mutex::RwLock, TextureHandle};
 use hecs::World;
@@ -9,18 +14,23 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use worlds_history_sim_rs::*;
+
+use app::SimulatorApp;
+use components::{Metadata, WorldTextureHandle};
+use formatted_numbers::Separator;
+use planet::*;
 
 fn main() -> color_eyre::Result<()> {
     env_logger::init(); // Log to stderr (if you run with `RUST_LOG=debug`).
 
     let native_options = eframe::NativeOptions {
-        initial_window_size: Some([800.0, 600.0].into()),
+        initial_window_size: Some([1600.0, 900.0].into()),
         ..Default::default()
     };
 
     let mut world = hecs::World::new();
-    world.spawn((worlds_history_sim_rs::Metadata::default(),));
+    world.spawn((Metadata::default(),));
+    world.spawn((Planet::empty(), PlanetUpdated(true)));
     let world = Arc::new(RwLock::new(world));
     let app = SimulatorApp::new(world.clone());
 
@@ -87,25 +97,29 @@ fn run_systems(world: Arc<RwLock<World>>) -> ! {
         }
 
         if quarter_second_timer.elapsed() >= Duration::from_millis(250) {
-            let (_, world_texture_handle) = world
-                .query_mut::<&mut WorldTextureHandle>()
+            let (_, (planet, planet_updated)) = world
+                .query_mut::<(&Planet, &mut PlanetUpdated)>()
                 .into_iter()
                 .next()
-                .expect("WorldTextureHandle missing");
+                .expect("Planet missing");
+            let world_image = if planet_updated.0 {
+                planet_updated.0 = false;
+                Some(egui::ImageData::Color(Arc::new(planet.into())))
+            } else {
+                None
+            };
 
-            world_texture_handle.0.set(
-                egui::ImageData::Color(Arc::new(egui::ColorImage {
-                    size: [one_second_timer.elapsed().subsec_millis() as usize, 100],
-                    pixels: vec![
-                        egui::Rgba::BLUE.into();
-                        one_second_timer.elapsed().subsec_millis() as usize * 100
-                    ],
-                })),
-                egui::TextureOptions {
-                    magnification: egui::TextureFilter::Nearest,
-                    minification: egui::TextureFilter::Nearest,
-                },
-            );
+            if let Some(image) = world_image {
+                let (_, world_texture_handle) = world
+                    .query_mut::<&mut WorldTextureHandle>()
+                    .into_iter()
+                    .next()
+                    .expect("WorldTextureHandle missing");
+
+                world_texture_handle
+                    .0
+                    .set(image, egui::TextureOptions::NEAREST);
+            }
 
             quarter_second_timer = Instant::now();
         }
